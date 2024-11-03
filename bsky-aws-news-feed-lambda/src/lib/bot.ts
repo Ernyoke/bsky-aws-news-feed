@@ -8,6 +8,7 @@ import type {
 import atproto from "@atproto/api";
 import { Article } from "./article.js";
 import { Logger } from "@aws-lambda-powertools/logger";
+import moment from "moment";
 const { BskyAgent } = atproto;
 
 type BotOptions = {
@@ -35,6 +36,7 @@ export default class Bot {
     async post(article: Article, coverImage:atproto.ComAtprotoRepoUploadBlob.OutputSchema | undefined | null, dryRun: boolean = defaultOptions.dryRun) {
         if (dryRun) {
             this.logger.info("Article not posted! Reason: dry run.")
+            return;
         }
 
         let offset = article.title.length + 1;
@@ -64,7 +66,7 @@ export default class Bot {
 
         const record = {
             '$type': 'app.bsky.feed.post',
-            createdAt: article.isoDate,
+            createdAt: moment().toISOString(), // Post with the current moment, otherwise it will fuck up the feed
             text: fullText,
             facets: tagsFacets,
             embed: {
