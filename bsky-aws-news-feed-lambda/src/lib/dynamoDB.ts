@@ -1,10 +1,17 @@
-import { BatchWriteItemCommand, DynamoDBClient, PutRequest, QueryCommand, QueryCommandInput } from "@aws-sdk/client-dynamodb";
-import { Article } from "./article.js";
-import { marshall } from "@aws-sdk/util-dynamodb";
+import {
+    BatchWriteItemCommand,
+    DynamoDBClient,
+    PutRequest,
+    QueryCommand,
+    QueryCommandInput
+} from "@aws-sdk/client-dynamodb";
+import {Article} from "./article.js";
+import {marshall} from "@aws-sdk/util-dynamodb";
 import _ from "lodash";
-import { Logger } from "@aws-lambda-powertools/logger";
+import {Logger} from "@aws-lambda-powertools/logger";
+import {config} from "./config.js";
 
-const tableName = "bsky-aws-news-feed";
+const tableName = config.tableName;
 
 export default class DynamoClient {
     private client: DynamoDBClient;
@@ -23,26 +30,26 @@ export default class DynamoClient {
             "KeyConditionExpression": "GuiId = :id",
             "TableName": tableName
         } as QueryCommandInput;
-    
+
         const command = new QueryCommand(input);
         const response = await this.client.send(command);
-    
+
         return response.Items && response.Items.length > 0;
     }
-    
+
     async saveArticles(articles: Article[]) {
         // Calculate the expireAt time (90 days from now) in epoch second format
         const expireAt = Math.floor((new Date().getTime() + 90 * 24 * 60 * 60 * 1000) / 1000);
 
         const chunks = _.chunk(articles, 25);
-    
+
         const results = await Promise.allSettled(chunks.map(chunk => this.saveArticleBatch(chunk, expireAt)));
 
         for (let i = 0; i < results.length; i++) {
             if (results[i].status === "rejected") {
                 this.logger.error('Failed to save batch!', {
                     error: results[i],
-                    // batch: chunks[i]
+                    batch: chunks[i]
                 });
             }
         }
@@ -73,7 +80,7 @@ export default class DynamoClient {
                 [`${tableName}`]: putRequests
             }
         });
-    
+
         return await this.client.send(command);
     }
 }

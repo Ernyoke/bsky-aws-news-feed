@@ -18,6 +18,8 @@ resource "aws_lambda_function" "lambda" {
   environment {
     variables = {
       BSKY_DRY_RUN = var.dry_run
+      BUCKET_NAME = aws_s3_bucket.bucket.bucket
+      TABLE_NAME = aws_dynamodb_table.table.name
     }
   }
 }
