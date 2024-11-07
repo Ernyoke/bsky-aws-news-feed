@@ -38,10 +38,6 @@ async function main() {
         if (!checkResult?.value && moment(article.isoDate).isAfter(oneDayAgo)) {
             recentlyPublished.push(article);
         }
-
-        if (article.guid == 'f55f6b4a5dc02d42ba3ed21498df3e0f70ad7dae') {
-            recentlyPublished.push(article);
-        }
     }
 
     for (const failure of checkFailures) {
@@ -80,5 +76,3 @@ export const handler: Handler = async (event, context) => {
     logger.addContext(context);
     return await main();
 };
-
-// await main();

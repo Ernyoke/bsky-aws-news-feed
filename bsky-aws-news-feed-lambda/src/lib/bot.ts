@@ -40,11 +40,14 @@ export default class Bot {
 
         const encoder = new TextEncoder();
 
-        let offset = encoder.encode(article.title).byteLength + 1;
+        const titleRow = `🆕 ${article.title}\n\n`
+
+        let offset = encoder.encode(titleRow).byteLength;
 
         const tagsFacets: AppBskyRichtextFacet.Main[] = [];
-        let textLineWithTags = '';
-        const bskyTags = convertToBskyTags(article.categories);
+        let textRowWithTags = '';
+        const bskyTags = ['AWS'];
+        Array.prototype.push.apply(bskyTags, convertToBskyTags(article.categories));
 
         const hashTags: string[] = [];
         for (const tag of bskyTags) {
@@ -66,9 +69,9 @@ export default class Bot {
             hashTags.push(hashTag);
         }
 
-        textLineWithTags += `${hashTags.join(' ')}`;
+        textRowWithTags += `${hashTags.join(' ')}`;
 
-        const fullText = `${article.title} ${textLineWithTags}`;
+        const fullText = `${titleRow}${textRowWithTags}`;
 
         const record = {
             '$type': 'app.bsky.feed.post',
