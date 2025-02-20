@@ -16,7 +16,7 @@ async function main() {
 
     const feed = await fetchRss();
 
-    const oneDayAgo = moment().subtract(1, 'days');
+    const sevenDaysAgo = moment().subtract(7, 'days');
 
     const checkIfExistsInDB = await Promise.allSettled(feed.articles.map(article => db.checkIfArticleExists(article)));
     const checkFailures: { article: Article, error: any | undefined }[] = [];
@@ -35,7 +35,7 @@ async function main() {
             continue;
         }
 
-        if (!checkResult?.value && moment(article.isoDate).isAfter(oneDayAgo)) {
+        if (!checkResult?.value && moment(article.isoDate).isAfter(sevenDaysAgo)) {
             recentlyPublished.push(article);
         }
     }

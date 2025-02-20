@@ -1,6 +1,7 @@
 locals {
-  function_name = "${var.project_name}-lambda"
-  zip_path      = "${path.module}/temp/${local.function_name}.zip"
+  function_name       = "${var.project_name}-lambda"
+  zip_path            = "${path.module}/temp/${local.function_name}.zip"
+  news_lambda_timeout = 60 * 5 // 5 minutes
 }
 
 resource "aws_lambda_function" "lambda" {
@@ -12,14 +13,14 @@ resource "aws_lambda_function" "lambda" {
   runtime          = "nodejs20.x"
   filename         = local.zip_path
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-  timeout          = 60 * 5 // 5 minutes
+  timeout          = local.news_lambda_timeout
   architectures    = ["arm64"]
 
   environment {
     variables = {
       BSKY_DRY_RUN = var.dry_run
-      BUCKET_NAME = aws_s3_bucket.bucket.bucket
-      TABLE_NAME = aws_dynamodb_table.table.name
+      BUCKET_NAME  = aws_s3_bucket.bucket.bucket
+      TABLE_NAME   = aws_dynamodb_table.table.name
     }
   }
 }
