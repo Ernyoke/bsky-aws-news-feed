@@ -18,7 +18,9 @@ export const bskyAccount: AtpAgentLoginOpts = {
 
 const envSchema = z.object({
     BSKY_DRY_RUN: z.enum(['true', 'false']).transform((value) => value === 'true'),
-    BUCKET_NAME: z.string().min(1)
+    BUCKET_NAME: z.string().min(1),
+    NOVA_MICRO_MODEL_ID: z.string().min(1),
+    AWS_REGION: z.string().min(1)
 });
 
 const envVars = envSchema.parse(env);
@@ -26,5 +28,7 @@ const envVars = envSchema.parse(env);
 export const config = {
     bskyService: secrets.service,
     bskyDryRun: envVars.BSKY_DRY_RUN,
-    bucketName: envVars.BUCKET_NAME
+    bucketName: envVars.BUCKET_NAME,
+    novaMicroModelId: envVars.NOVA_MICRO_MODEL_ID,
+    awsRegion: envVars.AWS_REGION,
 };

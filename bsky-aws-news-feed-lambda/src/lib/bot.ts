@@ -1,11 +1,14 @@
 import {bskyAccount, config} from "./config.js";
-import type {AppBskyFeedPost, AppBskyRichtextFacet, AtpAgentLoginOpts} from "@atproto/api";
+import type {AppBskyFeedPost, AppBskyRichtextFacet, AtpAgentLoginOpts, BlobRef} from "@atproto/api";
 import atproto from "@atproto/api";
 import {Logger} from "@aws-lambda-powertools/logger";
 import moment from "moment";
 import {Article} from "shared";
+import {dedent} from "ts-dedent";
 
 const {BskyAgent} = atproto;
+
+const MAX_GRAPHEMES = 300;
 
 type BotOptions = {
     service: string | URL;
@@ -30,17 +33,44 @@ export default class Bot {
     }
 
     async post(article: Article,
-               coverImage: atproto.ComAtprotoRepoUploadBlob.OutputSchema | undefined | null,
+               summary: string,
+               coverImageData: atproto.ComAtprotoRepoUploadBlob.OutputSchema | undefined | null,
                dryRun: boolean = defaultOptions.dryRun) {
+
+        let record = this.buildRichTextRecord(article, summary, coverImageData?.blob);
+        const postLength = record.text.length;
+        if (postLength > MAX_GRAPHEMES) {
+            this.logger.warn(`Post length for article '${article.title}' exceeds ${MAX_GRAPHEMES} graphemes. Content is truncated.`);
+            const deprecationSummaryTruncated = truncateText(summary, Math.max(0, summary.length - (postLength - MAX_GRAPHEMES)));
+            record = this.buildRichTextRecord(article, deprecationSummaryTruncated, coverImageData?.blob);
+        }
 
         if (dryRun) {
             this.logger.warn("Article not posted! Reason: dry run.");
             return;
         }
 
+        return await this.#agent.post(record);
+    }
+
+    async uploadImage(imageBuffer: Uint8Array, dryRun: boolean = defaultOptions.dryRun) {
+        if (dryRun) {
+            this.logger.warn("Image not uploaded! Reason: dry run.");
+            return;
+        }
+
+        const response = await this.#agent.uploadBlob(imageBuffer, {encoding: `image/png`});
+        return response.data
+    }
+
+    buildRichTextRecord(article: Article, summary: string, coverImage: BlobRef | undefined) {
         const encoder = new TextEncoder();
 
-        const titleRow = `🆕 ${article.title}\n\n`
+        const titleRow = dedent`🆕 ${article.title}
+        
+        ${summary}
+        
+        `
 
         let offset = encoder.encode(titleRow).byteLength;
 
@@ -73,7 +103,7 @@ export default class Bot {
 
         const fullText = `${titleRow}${textRowWithTags}`;
 
-        const record = {
+        return {
             '$type': 'app.bsky.feed.post',
             createdAt: moment().toISOString(), // Post with the current moment, otherwise it will fuck up the feed
             text: fullText,
@@ -84,22 +114,10 @@ export default class Bot {
                     uri: article.link,
                     title: article.title,
                     description: article.contentSnippet,
-                    thumb: coverImage?.blob
+                    thumb: coverImage
                 }
             }
         } as AppBskyFeedPost.Record;
-
-        return await this.#agent.post(record);
-    }
-
-    async uploadImage(imageBuffer: Uint8Array, dryRun: boolean = defaultOptions.dryRun) {
-        if (dryRun) {
-            this.logger.warn("Image not uploaded! Reason: dry run.");
-            return;
-        }
-
-        const response = await this.#agent.uploadBlob(imageBuffer, {encoding: `image/png`});
-        return response.data
     }
 }
 
@@ -113,4 +131,14 @@ function convertToBskyTags(tags: string[]): string[] {
 
 function capitalize(str: string) {
     return String(str[0]).toUpperCase() + String(str).slice(1)
+}
+
+function truncateText(text: string, maxGraphemes: number): string {
+    const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
+    const graphemes = [...segmenter.segment(text)].map(segment => segment.segment);
+
+    if (graphemes.length > maxGraphemes) {
+        return graphemes.slice(0, maxGraphemes - 1).join("") + "…"; // Adding ellipsis
+    }
+    return text;
 }

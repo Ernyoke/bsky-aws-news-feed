@@ -2,7 +2,7 @@
   "name": "bsky-aws-news-feed-lambda",
   "version": "1.0.0",
   "description": "Publish news from https://aws.amazon.com/about-aws/whats-new/recent/feed/ to BlueSky",
-  "main": "dist/index.js",
+  "main": "dist/local.js",
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -43,9 +43,12 @@
     "@aws-lambda-powertools/parameters": "^2.14.0",
     "@aws-sdk/client-s3": "^3.685.0",
     "@aws-sdk/client-secrets-manager": "^3.679.0",
+    "@langchain/aws": "^0.1.4",
+    "@langchain/core": "^0.3.40",
     "lodash": "^4.17.21",
     "moment": "^2.30.1",
-    "zod": "^3.21.4",
-    "shared": "file:../shared"
+    "shared": "file:../shared",
+    "ts-dedent": "^2.2.0",
+    "zod": "^3.21.4"
   }
 }

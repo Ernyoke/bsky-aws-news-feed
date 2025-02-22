@@ -20,8 +20,8 @@ resource "aws_lambda_function" "fetcher_lambda" {
 
   environment {
     variables = {
-      QUEUE_URL    = aws_sqs_queue.delay_queue.url
-      TABLE_NAME   = aws_dynamodb_table.table.name
+      QUEUE_URL  = aws_sqs_queue.delay_queue.url
+      TABLE_NAME = aws_dynamodb_table.table.name
     }
   }
 }

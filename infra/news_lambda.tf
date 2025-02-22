@@ -1,7 +1,7 @@
 locals {
   news_function_name  = "${var.project_name}-lambda"
-  news_zip_path            = "${path.module}/temp/${local.news_function_name}.zip"
-  news_layer_zip_path      = "${path.module}/temp/${local.news_function_name}-layer.zip"
+  news_zip_path       = "${path.module}/temp/${local.news_function_name}.zip"
+  news_layer_zip_path = "${path.module}/temp/${local.news_function_name}-layer.zip"
   news_lambda_timeout = 60 * 5 // 5 minutes
 }
 
@@ -20,8 +20,9 @@ resource "aws_lambda_function" "news_lambda" {
 
   environment {
     variables = {
-      BSKY_DRY_RUN = var.dry_run
-      BUCKET_NAME  = aws_s3_bucket.bucket.bucket
+      BSKY_DRY_RUN        = var.dry_run
+      BUCKET_NAME         = aws_s3_bucket.bucket.bucket
+      NOVA_MICRO_MODEL_ID = "amazon.nova-micro-v1:0"
     }
   }
 }
@@ -122,6 +123,7 @@ resource "aws_iam_role_policy_attachment" "news_receive_sqs" {
   role       = aws_iam_role.news_lambda_role.name
 }
 
+# Allow reading from secrets
 resource "aws_iam_policy" "news_read_secrets" {
   name   = "${local.news_function_name}-read-secrets"
   path   = "/"
@@ -133,7 +135,7 @@ resource "aws_iam_role_policy_attachment" "news_read_secrets" {
   role       = aws_iam_role.news_lambda_role.name
 }
 
-## Allow read/write access to DynamoDB table
+# Allow read/write access to DynamoDB table
 data "aws_iam_policy_document" "news_dynamodb_access" {
   statement {
     effect = "Allow"
@@ -189,6 +191,32 @@ resource "aws_iam_policy" "news_s3_access" {
 
 resource "aws_iam_role_policy_attachment" "news_s3_access" {
   policy_arn = aws_iam_policy.news_s3_access.arn
+  role       = aws_iam_role.news_lambda_role.name
+}
+
+# Allow to invoke Bedrock Model
+data "aws_iam_policy_document" "news_invoke_bedrock" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "bedrock:InvokeModel",
+      "bedrock:ListFoundationModels"
+    ]
+
+    resources = [
+      "*",
+    ]
+  }
+}
+
+resource "aws_iam_policy" "news_invoke_bedrock" {
+  name   = "${local.news_function_name}-invoke-bedrock"
+  path   = "/"
+  policy = data.aws_iam_policy_document.news_invoke_bedrock.json
+}
+
+resource "aws_iam_role_policy_attachment" "news_invoke_bedrock" {
+  policy_arn = aws_iam_policy.news_invoke_bedrock.arn
   role       = aws_iam_role.news_lambda_role.name
 }
 
