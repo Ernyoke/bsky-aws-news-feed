@@ -1,5 +1,5 @@
 import Parser from 'rss-parser';
-import {Article} from './article.js';
+import {Article} from "shared";
 import moment from 'moment';
 
 export class Feed {
