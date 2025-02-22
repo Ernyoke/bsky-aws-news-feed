@@ -1,6 +1,7 @@
 locals {
   fetcher_function_name       = "${var.project_name}-fetcher-lambda"
   fetcher_zip_path            = "${path.module}/temp/${local.fetcher_function_name}.zip"
+  fetcher_layer_zip_path      = "${path.module}/temp/${local.fetcher_function_name}-layer.zip"
   fetcher_news_lambda_timeout = 60 * 5 // 5 minutes
 }
 
@@ -15,13 +16,19 @@ resource "aws_lambda_function" "fetcher_lambda" {
   source_code_hash = data.archive_file.fetcher_lambda_zip.output_base64sha256
   timeout          = local.fetcher_news_lambda_timeout
   architectures    = ["arm64"]
+  layers           = [aws_lambda_layer_version.fetcher_lambda_layer.arn]
 
   environment {
     variables = {
-      SQS_URL      = aws_sqs_queue.delay_queue.url
+      QUEUE_URL    = aws_sqs_queue.delay_queue.url
       TABLE_NAME   = aws_dynamodb_table.table.name
     }
   }
+}
+
+resource "aws_lambda_function_event_invoke_config" "deprecations_event_invoke_config" {
+  function_name          = aws_lambda_function.fetcher_lambda.function_name
+  maximum_retry_attempts = 0
 }
 
 data "archive_file" "fetcher_lambda_zip" {
@@ -30,25 +37,40 @@ data "archive_file" "fetcher_lambda_zip" {
   output_path = local.fetcher_zip_path
 }
 
-resource "aws_cloudwatch_event_rule" "fetcher_every_thirty_minutes" {
+resource "aws_lambda_layer_version" "fetcher_lambda_layer" {
+  filename         = "temp/${local.fetcher_function_name}-layer.zip"
+  layer_name       = "${local.fetcher_function_name}-layer"
+  source_code_hash = data.archive_file.fetcher_lambda_layer_zip.output_base64sha256
+
+  compatible_runtimes = ["nodejs20.x"]
+}
+
+data "archive_file" "fetcher_lambda_layer_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../${local.fetcher_function_name}-layer"
+  output_path = local.fetcher_layer_zip_path
+}
+
+// EventBridge
+resource "aws_cloudwatch_event_rule" "every_thirty_minutes" {
   name                = "${local.fetcher_function_name}-every-30-min"
-  description         = "Run ${local.fetcher_function_name} every thirty minutes"
+  description         = "Run ${local.fetcher_function_name} every five minutes"
   schedule_expression = "rate(30 minutes)"
-  state               = "DISABLED"
+  state               = "ENABLED"
 }
 
 resource "aws_cloudwatch_event_target" "fetcher_target" {
-  rule      = aws_cloudwatch_event_rule.fetcher_every_thirty_minutes.name
+  rule      = aws_cloudwatch_event_rule.every_thirty_minutes.name
   target_id = "${local.fetcher_function_name}-target"
   arn       = aws_lambda_function.fetcher_lambda.arn
 }
 
-resource "aws_lambda_permission" "fetcher_lambda_permission" {
+resource "aws_lambda_permission" "lambda_permission" {
   statement_id  = "AllowExecutionFromCloudWatch"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.fetcher_lambda.function_name
   principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.fetcher_every_thirty_minutes.arn
+  source_arn    = aws_cloudwatch_event_rule.every_thirty_minutes.arn
 }
 
 ## Lambda Role
@@ -104,6 +126,31 @@ resource "aws_iam_policy" "fetcher_dynamodb_access" {
 
 resource "aws_iam_role_policy_attachment" "fetcher_dynamodb_access" {
   policy_arn = aws_iam_policy.fetcher_dynamodb_access.arn
+  role       = aws_iam_role.fetcher_lambda_role.name
+}
+
+# Allow publish to SQS
+data "aws_iam_policy_document" "fetcher_publish_sqs" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "sqs:SendMessage"
+    ]
+
+    resources = [
+      aws_sqs_queue.delay_queue.arn,
+    ]
+  }
+}
+
+resource "aws_iam_policy" "fetcher_publish_sqs" {
+  name   = "${local.fetcher_function_name}-publish-sns"
+  path   = "/"
+  policy = data.aws_iam_policy_document.fetcher_publish_sqs.json
+}
+
+resource "aws_iam_role_policy_attachment" "fetcher_publish_sqs" {
+  policy_arn = aws_iam_policy.fetcher_publish_sqs.arn
   role       = aws_iam_role.fetcher_lambda_role.name
 }
 

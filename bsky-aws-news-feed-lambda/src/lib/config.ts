@@ -18,8 +18,7 @@ export const bskyAccount: AtpAgentLoginOpts = {
 
 const envSchema = z.object({
     BSKY_DRY_RUN: z.enum(['true', 'false']).transform((value) => value === 'true'),
-    BUCKET_NAME: z.string().min(1),
-    TABLE_NAME: z.string().min(1)
+    BUCKET_NAME: z.string().min(1)
 });
 
 const envVars = envSchema.parse(env);
@@ -27,6 +26,5 @@ const envVars = envSchema.parse(env);
 export const config = {
     bskyService: secrets.service,
     bskyDryRun: envVars.BSKY_DRY_RUN,
-    bucketName: envVars.BUCKET_NAME,
-    tableName:  envVars.TABLE_NAME
+    bucketName: envVars.BUCKET_NAME
 };

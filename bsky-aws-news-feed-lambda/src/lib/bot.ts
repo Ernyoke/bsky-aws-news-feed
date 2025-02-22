@@ -1,9 +1,9 @@
 import {bskyAccount, config} from "./config.js";
 import type {AppBskyFeedPost, AppBskyRichtextFacet, AtpAgentLoginOpts} from "@atproto/api";
 import atproto from "@atproto/api";
-import {Article} from "./article.js";
 import {Logger} from "@aws-lambda-powertools/logger";
 import moment from "moment";
+import {Article} from "shared";
 
 const {BskyAgent} = atproto;
 

@@ -1,78 +1,41 @@
-import {Handler} from 'aws-lambda';
+import {Context, SQSEvent, SQSHandler, SQSRecord} from 'aws-lambda';
 import Bot from "./lib/bot.js";
-import DynamoClient from './lib/dynamoDB.js';
-import _ from 'lodash';
-import {Article} from './lib/article.js';
 import {Logger} from '@aws-lambda-powertools/logger';
-import fetchRss from './lib/rssFeed.js';
 import {getObjectFromResources} from "./lib/s3.js";
-import moment from 'moment';
+import {Article} from "shared";
+import {BatchProcessor, EventType, processPartialResponse} from "@aws-lambda-powertools/batch";
+import {config} from "./lib/config.js";
 
 const logger = new Logger();
-const db = new DynamoClient(logger);
+const bot = new Bot(logger);
+const processor = new BatchProcessor(EventType.SQS);
 
-async function main() {
-    const articlesToPost: Article[] = [];
+const coverImagePromise = getObjectFromResources('cover.png');
 
-    const feed = await fetchRss();
-
-    const sevenDaysAgo = moment().subtract(7, 'days');
-
-    const checkIfExistsInDB = await Promise.allSettled(feed.articles.map(article => db.checkIfArticleExists(article)));
-    const checkFailures: { article: Article, error: any | undefined }[] = [];
-
-    const recentlyPublished: Article[] = [];
-
-    for (const [article, checkResult] of _.zip(feed.articles, checkIfExistsInDB)) {
-        if (!article) {
-            continue;
-        }
-
-        if (checkResult?.status === "rejected") {
-            checkFailures.push({
-                article: article, error: checkResult?.reason
+const recordHandler = async (record: SQSRecord): Promise<void> => {
+    const payload = record.body;
+    const coverImageArrayBuffer = await coverImagePromise;
+    const coverImage = coverImageArrayBuffer ? await bot.uploadImage(coverImageArrayBuffer) : null;
+    if (payload) {
+        const article = JSON.parse(payload) as Article;
+        try {
+            const result = await bot.post(article, coverImage, config.bskyDryRun);
+            logger.info(`Posted article ${article.guid} with title "${article.title}. Post URI: ${result?.uri}"`);
+        } catch (ex) {
+            logger.error(`Failed to post article ${article.guid} with title "${article.title} `, {
+                error: ex
             });
-            continue;
-        }
-
-        if (!checkResult?.value && moment(article.isoDate).isAfter(sevenDaysAgo)) {
-            recentlyPublished.push(article);
+            throw ex;
         }
     }
-
-    for (const failure of checkFailures) {
-        logger.warn(`Failed to detect if article ${failure.article.guid} with title ${failure.article.title} exists in the database!`);
-    }
-
-    Array.prototype.push.apply(articlesToPost, recentlyPublished);
-
-    if (articlesToPost.length > 0) {
-        const bot = new Bot(logger);
-        await bot.login();
-        const coverImageArrayBuffer = await getObjectFromResources('cover.png');
-
-        const coverImage = coverImageArrayBuffer ? await bot.uploadImage(coverImageArrayBuffer) : null;
-
-        for (const article of articlesToPost) {
-            try {
-                logger.info(`posting ${article.link}`);
-                await bot.post(article, coverImage)
-                logger.info(`Posted article ${article.guid} with title "${article.title} (${article.link})"`);
-            } catch (ex) {
-                logger.error(`Failed to post article ${article.guid} with title "${article.title} (${article.link})`, {
-                    error: ex
-                });
-            }
-        }
-
-        await db.saveArticles(articlesToPost);
-        logger.info(`${articlesToPost.length} articles were saved into DynamoDB.`);
-    } else {
-        logger.info(`No new articles.`);
-    }
-}
-
-export const handler: Handler = async (event, context) => {
-    logger.addContext(context);
-    return await main();
 };
+
+export const handler: SQSHandler = async (event: SQSEvent, context: Context) => {
+    logger.addContext(context);
+    logger.info(`Received batch of ${event.Records.length} events from SQS.`);
+    await bot.login();
+    return await processPartialResponse(event, recordHandler, processor, {
+        context,
+        processInParallel: true
+    });
+}

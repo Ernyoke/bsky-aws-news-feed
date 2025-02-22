@@ -1,6 +1,7 @@
 locals {
   function_name       = "${var.project_name}-lambda"
   zip_path            = "${path.module}/temp/${local.function_name}.zip"
+  layer_zip_path      = "${path.module}/temp/${local.function_name}-layer.zip"
   news_lambda_timeout = 60 * 5 // 5 minutes
 }
 
@@ -15,12 +16,12 @@ resource "aws_lambda_function" "lambda" {
   source_code_hash = data.archive_file.lambda_zip.output_base64sha256
   timeout          = local.news_lambda_timeout
   architectures    = ["arm64"]
+  layers           = [aws_lambda_layer_version.lambda_layer.arn]
 
   environment {
     variables = {
       BSKY_DRY_RUN = var.dry_run
       BUCKET_NAME  = aws_s3_bucket.bucket.bucket
-      TABLE_NAME   = aws_dynamodb_table.table.name
     }
   }
 }
@@ -31,25 +32,28 @@ data "archive_file" "lambda_zip" {
   output_path = local.zip_path
 }
 
-resource "aws_cloudwatch_event_rule" "every_five_minutes" {
-  name                = "${local.function_name}-every-30-min"
-  description         = "Run ${local.function_name} every five minutes"
-  schedule_expression = "rate(30 minutes)"
-  state               = "ENABLED"
+resource "aws_lambda_layer_version" "lambda_layer" {
+  filename         = "temp/${local.function_name}-layer.zip"
+  layer_name       = "${local.function_name}-layer"
+  source_code_hash = data.archive_file.lambda_layer_zip.output_base64sha256
+
+  compatible_runtimes = ["nodejs20.x"]
 }
 
-resource "aws_cloudwatch_event_target" "target" {
-  rule      = aws_cloudwatch_event_rule.every_five_minutes.name
-  target_id = "${local.function_name}-target"
-  arn       = aws_lambda_function.lambda.arn
+data "archive_file" "lambda_layer_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../${local.function_name}-layer"
+  output_path = local.layer_zip_path
 }
 
-resource "aws_lambda_permission" "lambda_permission" {
-  statement_id  = "AllowExecutionFromCloudWatch"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.lambda.function_name
-  principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.every_five_minutes.arn
+// Event source mapping
+resource "aws_lambda_event_source_mapping" "event_source_mapping" {
+  event_source_arn                   = aws_sqs_queue.delay_queue.arn
+  enabled                            = true
+  function_name                      = aws_lambda_function.lambda.arn
+  batch_size                         = 10
+  maximum_batching_window_in_seconds = 60
+  function_response_types            = ["ReportBatchItemFailures"]
 }
 
 ## Lambda Role
@@ -89,6 +93,33 @@ data "aws_iam_policy_document" "read_secrets" {
       aws_secretsmanager_secret.bsky_secrets.arn,
     ]
   }
+}
+
+# Allow receiving messages from SQS
+data "aws_iam_policy_document" "receive_sqs" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:GetQueueAttributes"
+    ]
+
+    resources = [
+      aws_sqs_queue.delay_queue.arn,
+    ]
+  }
+}
+
+resource "aws_iam_policy" "receive_sqs" {
+  name   = "${local.function_name}-receive-sqs"
+  path   = "/"
+  policy = data.aws_iam_policy_document.receive_sqs.json
+}
+
+resource "aws_iam_role_policy_attachment" "receive_sqs" {
+  policy_arn = aws_iam_policy.receive_sqs.arn
+  role       = aws_iam_role.lambda_role.name
 }
 
 resource "aws_iam_policy" "read_secrets" {

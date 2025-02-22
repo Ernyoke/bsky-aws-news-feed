@@ -44,8 +44,6 @@ async function main() {
         logger.warn(`Failed to detect if article ${failure.article.guid} with title ${failure.article.title} exists in the database!`);
     }
 
-    recentlyPublished.push(...feed.articles.splice(0, 10))
-
     Array.prototype.push.apply(articlesToPost, recentlyPublished);
 
     if (articlesToPost.length > 0) {
