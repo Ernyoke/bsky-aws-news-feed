@@ -44,7 +44,7 @@ export default class QueueClient {
                         this.logger.error(`Failed to send message: ${failure.Id}`);
                     }
                 } else {
-                    this.logger.info(`Batch with ${batchResult.value} pushed successfully.`);
+                    this.logger.info(`Batch with ${batchResult.value?.Successful?.length} messages sent successfully.`);
                 }
             } else {
                 this.logger.error("Batch request failed!");

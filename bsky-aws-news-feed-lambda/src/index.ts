@@ -20,7 +20,14 @@ const recordHandler = async (record: SQSRecord): Promise<void> => {
     const coverImage = coverImageArrayBuffer ? await bot.uploadImage(coverImageArrayBuffer) : null;
     if (payload) {
         const article = JSON.parse(payload) as Article;
-        const summary = await nova.summarize(article.title, article.contentSnippet);
+
+        let summary = null;
+        try {
+            summary = await nova.summarize(article.title, article.contentSnippet);
+        } catch (ex) {
+            logger.error(`Failed to summarize content for article ${article.title}!`, JSON.stringify(ex));
+        }
+
         try {
             const result = await bot.post(article, summary, coverImage, config.bskyDryRun);
             logger.info(`Posted article ${article.guid} with title "${article.title}. Post URI: ${result?.uri}"`);

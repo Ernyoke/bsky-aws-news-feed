@@ -9,7 +9,7 @@ export class NovaMicro {
     summaryTemplate = dedent`
     You are an AWS expert whose job is to summarize AWS news. You should provide short and concise summary
     for the following news content.
-    Important! Your answer should contain maximum 2 sentences!
+    Important! Your answer should contain maximum 250 characters!
     ---------
     Title: {title}
     Content: {content}
@@ -19,7 +19,7 @@ export class NovaMicro {
     private model = new ChatBedrockConverse({
         model: config.novaMicroModelId,
         region: config.awsRegion,
-        temperature: 0.5
+        temperature: 0.3
     });
 
     constructor(private logger: Logger) {

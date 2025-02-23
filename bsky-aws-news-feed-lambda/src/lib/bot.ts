@@ -4,7 +4,6 @@ import atproto from "@atproto/api";
 import {Logger} from "@aws-lambda-powertools/logger";
 import moment from "moment";
 import {Article} from "shared";
-import {dedent} from "ts-dedent";
 
 const {BskyAgent} = atproto;
 
@@ -33,16 +32,17 @@ export default class Bot {
     }
 
     async post(article: Article,
-               summary: string,
+               summary: string | null,
                coverImageData: atproto.ComAtprotoRepoUploadBlob.OutputSchema | undefined | null,
                dryRun: boolean = defaultOptions.dryRun) {
 
-        let record = this.buildRichTextRecord(article, summary, coverImageData?.blob);
+        const content = summary ? summary : article.title;
+        let record = this.buildRichTextRecord(article, content, coverImageData?.blob);
         const postLength = record.text.length;
         if (postLength > MAX_GRAPHEMES) {
             this.logger.warn(`Post length for article '${article.title}' exceeds ${MAX_GRAPHEMES} graphemes. Content is truncated.`);
-            const deprecationSummaryTruncated = truncateText(summary, Math.max(0, summary.length - (postLength - MAX_GRAPHEMES)));
-            record = this.buildRichTextRecord(article, deprecationSummaryTruncated, coverImageData?.blob);
+            const contentTruncated = truncateText(content, Math.max(0, content.length - (postLength - MAX_GRAPHEMES)));
+            record = this.buildRichTextRecord(article, contentTruncated, coverImageData?.blob);
         }
 
         if (dryRun) {
@@ -63,16 +63,12 @@ export default class Bot {
         return response.data
     }
 
-    buildRichTextRecord(article: Article, summary: string, coverImage: BlobRef | undefined) {
+    buildRichTextRecord(article: Article, content: string, coverImage: BlobRef | undefined) {
         const encoder = new TextEncoder();
 
-        const titleRow = dedent`🆕 ${article.title}
-        
-        ${summary}
-        
-        `
+        const contentRow = `🆕 ${content}\n\n`
 
-        let offset = encoder.encode(titleRow).byteLength;
+        let offset = encoder.encode(contentRow).byteLength;
 
         const tagsFacets: AppBskyRichtextFacet.Main[] = [];
         let textRowWithTags = '';
@@ -101,7 +97,7 @@ export default class Bot {
 
         textRowWithTags += `${hashTags.join(' ')}`;
 
-        const fullText = `${titleRow}${textRowWithTags}`;
+        const fullText = `${contentRow}${textRowWithTags}`;
 
         return {
             '$type': 'app.bsky.feed.post',
