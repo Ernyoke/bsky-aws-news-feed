@@ -37,9 +37,9 @@ export class Nova {
 
     async shortenSummary(summary: string, maxCharacters: number) {
         const summaryTemplate = dedent`Shorten this summary to under {maxCharacters} 
-        graphemes without losing key points. 
+        characters without losing key points. 
         ---------
-        Current length: {currentCount}
+        Current length: {currentLength}
         Current summary: {currentSummary}`;
 
         const summaryChain = PromptTemplate.fromTemplate(summaryTemplate)
@@ -48,7 +48,7 @@ export class Nova {
 
         return await summaryChain.invoke({
             currentSummary: summary,
-            currentCount: summary.length,
+            currentLength: summary.length,
             maxCharacters
         });
     }
