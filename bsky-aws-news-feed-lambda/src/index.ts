@@ -5,11 +5,11 @@ import {getObjectFromResources} from "./lib/s3.js";
 import {Article} from "shared";
 import {BatchProcessor, EventType, processPartialResponse} from "@aws-lambda-powertools/batch";
 import {config} from "./lib/config.js";
-import {NovaMicro} from "./lib/novaMicro.js";
+import {Nova} from "./lib/nova.js";
 
 const logger = new Logger();
-const bot = new Bot(logger);
-const nova = new NovaMicro(logger)
+const nova = new Nova(logger)
+const bot = new Bot(logger, nova);
 const processor = new BatchProcessor(EventType.SQS);
 
 const coverImagePromise = getObjectFromResources('cover.png');
@@ -20,16 +20,8 @@ const recordHandler = async (record: SQSRecord): Promise<void> => {
     const coverImage = coverImageArrayBuffer ? await bot.uploadImage(coverImageArrayBuffer) : null;
     if (payload) {
         const article = JSON.parse(payload) as Article;
-
-        let summary = null;
         try {
-            summary = await nova.summarize(article.title, article.contentSnippet);
-        } catch (ex) {
-            logger.error(`Failed to summarize content for article ${article.title}!`, JSON.stringify(ex));
-        }
-
-        try {
-            const result = await bot.post(article, summary, coverImage, config.bskyDryRun);
+            const result = await bot.post(article, coverImage, config.bskyDryRun);
             logger.info(`Posted article ${article.guid} with title "${article.title}. Post URI: ${result?.uri}"`);
         } catch (ex) {
             logger.error(`Failed to post article ${article.guid} with title "${article.title} `, {

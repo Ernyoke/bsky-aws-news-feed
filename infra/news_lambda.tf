@@ -20,9 +20,9 @@ resource "aws_lambda_function" "news_lambda" {
 
   environment {
     variables = {
-      BSKY_DRY_RUN        = var.dry_run
-      BUCKET_NAME         = aws_s3_bucket.bucket.bucket
-      NOVA_MICRO_MODEL_ID = "amazon.nova-micro-v1:0"
+      BSKY_DRY_RUN  = var.dry_run
+      BUCKET_NAME   = aws_s3_bucket.bucket.bucket
+      NOVA_MODEL_ID = "amazon.nova-micro-v1:0"
     }
   }
 }

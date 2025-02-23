@@ -4,6 +4,7 @@ import atproto from "@atproto/api";
 import {Logger} from "@aws-lambda-powertools/logger";
 import moment from "moment";
 import {Article} from "shared";
+import {Nova} from "./nova.js";
 
 const {BskyAgent} = atproto;
 
@@ -22,7 +23,9 @@ const defaultOptions: BotOptions = {
 export default class Bot {
     #agent;
 
-    constructor(private logger: Logger, options: BotOptions = defaultOptions) {
+    constructor(private logger: Logger,
+                private llm: Nova,
+                options: BotOptions = defaultOptions) {
         const {service} = options;
         this.#agent = new BskyAgent({service});
     }
@@ -32,17 +35,20 @@ export default class Bot {
     }
 
     async post(article: Article,
-               summary: string | null,
                coverImageData: atproto.ComAtprotoRepoUploadBlob.OutputSchema | undefined | null,
                dryRun: boolean = defaultOptions.dryRun) {
 
-        const content = summary ? summary : article.title;
+        const content = await this.prepareSummary(article, article.title);
         let record = this.buildRichTextRecord(article, content, coverImageData?.blob);
         const postLength = record.text.length;
+        this.logger.info(`Record with length of ${postLength} prepared to be posted. Content: ${record.text}`);
+
         if (postLength > MAX_GRAPHEMES) {
-            this.logger.warn(`Post length for article '${article.title}' exceeds ${MAX_GRAPHEMES} graphemes. Content is truncated.`);
-            const contentTruncated = truncateText(content, Math.max(0, content.length - (postLength - MAX_GRAPHEMES)));
-            record = this.buildRichTextRecord(article, contentTruncated, coverImageData?.blob);
+            this.logger.warn(`Post length for article '${article.title}' exceeds ${MAX_GRAPHEMES} graphemes. Trying to shorten content.`);
+            const shortenedContent =
+                await this.shortenSummary(content, Math.max(0, content.length - (postLength - MAX_GRAPHEMES)));
+            record = this.buildRichTextRecord(article, shortenedContent, coverImageData?.blob);
+            this.logger.info(`Shortened record with length of ${record.text.length} prepared to be posted. Content: '${record.text}'`);
         }
 
         if (dryRun) {
@@ -51,6 +57,32 @@ export default class Bot {
         }
 
         return await this.#agent.post(record);
+    }
+
+    async prepareSummary(article: Article, fallbackContent: string) {
+        try {
+            return await this.llm.summarize(article.title, article.contentSnippet);
+        } catch (ex) {
+            this.logger.error(`Failed to summarize content for article ${article.title}!`, JSON.stringify(ex));
+        }
+        return fallbackContent;
+    }
+
+    async shortenSummary(summary: string, maxCharacters: number) {
+        try {
+            const shortenedSummary = await this.llm.shortenSummary(summary, maxCharacters);
+            if (shortenedSummary.length > maxCharacters) {
+                const truncatedText = truncateText(shortenedSummary, Math.max(0, maxCharacters));
+                this.logger.warn(`Length after shortening exceeds maximum number of allowed characters! Falling back to truncation. Truncated text: ${truncatedText}`);
+                return truncatedText;
+            }
+            return shortenedSummary;
+        } catch (ex) {
+            this.logger.error(`Failed to shorten summary for  ${summary}!`, JSON.stringify(ex));
+        }
+        const truncatedText = truncateText(summary, Math.max(0, maxCharacters));
+        this.logger.warn(`Falling back to truncation. Truncated text: ${truncatedText}`);
+        return truncatedText;
     }
 
     async uploadImage(imageBuffer: Uint8Array, dryRun: boolean = defaultOptions.dryRun) {
@@ -130,7 +162,7 @@ function capitalize(str: string) {
 }
 
 function truncateText(text: string, maxGraphemes: number): string {
-    const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
+    const segmenter = new Intl.Segmenter("en", {granularity: "grapheme"});
     const graphemes = [...segmenter.segment(text)].map(segment => segment.segment);
 
     if (graphemes.length > maxGraphemes) {
