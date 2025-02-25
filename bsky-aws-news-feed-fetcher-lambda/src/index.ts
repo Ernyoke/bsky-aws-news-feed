@@ -48,6 +48,9 @@ async function main() {
 
     if (articlesToPost.length > 0) {
         await sqs.sendArticlesWithDelay(articlesToPost);
+
+        await db.saveArticles(articlesToPost);
+        logger.info(`${articlesToPost.length} articles were saved into DynamoDB.`);
     } else {
         logger.info('No new articles found.');
     }
